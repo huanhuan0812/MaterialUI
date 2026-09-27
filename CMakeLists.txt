@@ -70,6 +70,7 @@ add_executable(MaterialUI
     src/component/base/types.h
     src/render/canvas.hpp
     src/render/skia_canvas.hpp
+    src/render/skia_canvas.cpp
 )
 
 target_include_directories(MaterialUI PRIVATE
