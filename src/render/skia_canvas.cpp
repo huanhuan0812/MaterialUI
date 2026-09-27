@@ -16,7 +16,6 @@
 #include "include/core/SkSurface.h"
 #include "include/core/SkImage.h"
 #include "include/core/SkImageInfo.h"
-#include "include/core/SkData.h"
 #include "include/effects/SkGradient.h"
 #include "include/core/SkSurface.h"
 
