@@ -14,7 +14,7 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
 
     set(platform_specific_sources
-        src/widget/widget_cocoa.mm
+        src/native/native_widget/widget_cocoa.mm
         src/render/cocoa_canvas.mm
     )
     
@@ -39,7 +39,7 @@ if(APPLE)
     )
 elseif(WIN32)
     set(platform_specific_sources
-        src/widget/widget_win32.cpp
+        src/native/native_widget/widget_win32.cpp
         src/render/win32_canvas.hpp
     )
 
@@ -66,7 +66,7 @@ endif()
 # ---------- 可执行目标 ----------
 add_executable(MaterialUI
     main.cpp
-    src/widget/widget.cpp
+    src/native/native_widget/NativeWidget.cpp
     ${platform_specific_sources}
     src/component/base/baseControler.hpp
     src/component/base/types.h
@@ -74,6 +74,7 @@ add_executable(MaterialUI
     src/render/skia_canvas.hpp
     src/render/skia_canvas.cpp
     src/component/input/Button.hpp
+    src/app/application.hpp
 )
 
 target_include_directories(MaterialUI PRIVATE

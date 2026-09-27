@@ -1,5 +1,5 @@
-// src/widget/widget_win32.cpp
-#include "widget.h"
+// src/native/native_widget/widget_win32.cpp
+#include "NativeWidget.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -10,6 +10,9 @@
 #include <cmath>
 #include <vector>
 #include <cstdint>
+
+#include "../../component/base/types.h"
+#include "../../render/win32_canvas.hpp"
 
 namespace ui {
 namespace {

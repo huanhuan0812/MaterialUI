@@ -1,5 +1,5 @@
-// src/widget.cpp
-#include "widget.h"
+// src/native/native_widget/widget.cpp
+#include "NativeWidget.h"
 
 #if defined(_WIN32)
 namespace ui { std::unique_ptr<Widget> createWin32Widget(); }

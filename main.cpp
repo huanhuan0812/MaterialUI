@@ -1,4 +1,4 @@
-#include "src/widget/widget.h"
+#include "src/native/native_widget/NativeWidget.h"
 #include <cstdio>
 
 int main() {
@@ -12,7 +12,7 @@ int main() {
     // ---- 绘制回调：只画脏区 ----
     w->setPaintCallback([&](ui::Canvas& c, const ui::Rect& dirty) {
         // 背景：只填脏区
-        c.fillRect(dirty, 0xFF2D2D30);
+        c.fillRect(dirty, 0xFFFFFFFF);
 
         // 若脏区与按钮相交，才画按钮（脏矩形裁剪的核心思想）
         if (!dirty.intersect(btnRect).empty()) {
@@ -35,7 +35,7 @@ int main() {
         }
     });
 
-    if (!w->create("Dirty Rect Demo", 800, 600)) {
+    if (!w->create("test demo", 800, 600)) {
         std::fprintf(stderr, "create failed\n");
         return 1;
     }

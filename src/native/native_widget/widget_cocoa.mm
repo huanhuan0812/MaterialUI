@@ -1,5 +1,5 @@
-// src/widget/widget_cocoa.mm
-#include "widget.h"
+// src/native/native_widget/widget_cocoa.mm
+#include "NativeWidget.h"
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "../render/cocoa_canvas.mm"
+#include "../../render/cocoa_canvas.mm"
 
 // ---- 前向声明（非匿名命名空间）----
 namespace ui {

@@ -4,8 +4,8 @@
 #include <string>
 #include <functional>
 
-#include "../component/base/types.h"
-#include "../render/canvas.hpp"
+#include "../../component/base/types.h"
+#include "../../render/canvas.hpp"
 
 namespace ui {
 
