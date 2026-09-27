@@ -73,6 +73,7 @@ add_executable(MaterialUI
     src/render/canvas.hpp
     src/render/skia_canvas.hpp
     src/render/skia_canvas.cpp
+    src/component/input/Button.hpp
 )
 
 target_include_directories(MaterialUI PRIVATE
