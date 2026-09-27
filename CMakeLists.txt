@@ -15,6 +15,7 @@ if(APPLE)
 
     set(platform_specific_sources
         src/widget/widget_cocoa.mm
+        src/render/cocoa_canvas.mm
     )
     
     set(platform_link_libs
@@ -39,6 +40,7 @@ if(APPLE)
 elseif(WIN32)
     set(platform_specific_sources
         src/widget/widget_win32.cpp
+        src/render/win32_canvas.hpp
     )
 
     # 视 SKIA_ROOT 在 Windows 上的实际布局调整
