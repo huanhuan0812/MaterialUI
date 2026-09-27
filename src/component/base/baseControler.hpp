@@ -1,7 +1,7 @@
 #pragma once
 
 #include "types.h"
-#include "../../widget/widget.h"   // 为了 Canvas
+#include "../../render/canvas.hpp"
 
 #include <functional>
 #include <memory>
