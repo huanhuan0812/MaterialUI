@@ -1,6 +1,6 @@
 // src/ui/application.h
 #pragma once
-#include "../native/native_widget/NativeWidget.h"
+#include "../native/NativeWidget/NativeWidget.h"
 #include <memory>
 
 namespace ui {
@@ -12,7 +12,7 @@ public:
     }
 
     // 用户不需要知道 pumpEvents 的细节
-    int exec() {
+    int run() {
         if (!window_) return -1;
         while (window_->pumpEvents()) {   // 阻塞等待事件
             tick();

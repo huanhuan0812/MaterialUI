@@ -1,7 +1,7 @@
 // src/render/skia_canvas.hpp
 #pragma once
 
-#include "canvas.hpp"
+#include "render.hpp"
 #include <memory>
 
 namespace ui {

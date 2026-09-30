@@ -8,16 +8,18 @@ set(CMAKE_OBJCXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(SKIA_ROOT "$ENV{HOME}/skia")
 
+find_package(PkgConfig REQUIRED)
+
 # ---------- 平台源文件 & 平台链接库 ----------
 if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
 
     set(platform_specific_sources
-        src/native/native_widget/widget_cocoa.mm
-        src/render/cocoa_canvas.mm
+        src/native/NativeWidget/macNativeWidget.mm
+        src/render/cocoaRender.mm
     )
-    
+
     set(platform_link_libs
         "${SKIA_ROOT}/lib/libskia.a"
         "-framework Cocoa"
@@ -37,27 +39,87 @@ if(APPLE)
         "-framework Accelerate"
         "-lz"
     )
+
 elseif(WIN32)
     set(platform_specific_sources
-        src/native/native_widget/widget_win32.cpp
-        src/render/win32_canvas.hpp
+        src/native/NativeWidget/winNativeWidget.cpp
     )
 
-    # 视 SKIA_ROOT 在 Windows 上的实际布局调整
     set(platform_link_libs
-        "${SKIA_ROOT}/lib/skia.lib"   # 或 skia.dll 的导入库 skia.lib
+        "${SKIA_ROOT}/lib/skia.lib"
         user32
         gdi32
-        msimg32        # AlphaBlend / GradientFill
-        ole32          # 备用：COM，Skia D3D 后端等可能用到
-        shell32        # 备用：拖放、Shell 相关
+        msimg32
+        ole32
+        shell32
     )
 
     target_compile_definitions(MaterialUI PRIVATE
         UNICODE
         _UNICODE
-        NOMINMAX                 # 防止 windows.h 的 min/max 宏污染 std::min/max
-        WIN32_LEAN_AND_MEAN      # 减少 windows.h 包含范围，加快编译
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+    )
+
+elseif(UNIX AND NOT APPLE)
+    # ---------- Linux：X11 + Wayland 双后端 ----------
+    pkg_check_modules(X11     REQUIRED x11 xext xrender)
+    pkg_check_modules(CAIRO   REQUIRED cairo)
+    pkg_check_modules(WAYLAND REQUIRED wayland-client)
+    pkg_check_modules(XKB     REQUIRED xkbcommon)   # 若暂时不做键盘字符解析，可去掉
+
+    # 生成 xdg-shell 协议代码（放在构建目录里）
+    find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+    set(XDG_SHELL_XML "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml")
+
+    if(NOT EXISTS "${XDG_SHELL_XML}")
+        message(FATAL_ERROR
+            "xdg-shell.xml not found at ${XDG_SHELL_XML}. "
+            "Install wayland-protocols.")
+    endif()
+
+    set(XDG_PROTO_H  "${CMAKE_CURRENT_BINARY_DIR}/xdg-shell-client-protocol.h")
+    set(XDG_PROTO_C  "${CMAKE_CURRENT_BINARY_DIR}/xdg-shell-protocol.c")
+
+    add_custom_command(
+        OUTPUT  ${XDG_PROTO_H} ${XDG_PROTO_C}
+        COMMAND ${WAYLAND_SCANNER} client-header
+                ${XDG_SHELL_XML} ${XDG_PROTO_H}
+        COMMAND ${WAYLAND_SCANNER} private-code
+                ${XDG_SHELL_XML} ${XDG_PROTO_C}
+        DEPENDS ${XDG_SHELL_XML}
+        COMMENT "Generating xdg-shell protocol sources"
+        VERBATIM
+    )
+
+    # 因为 add_custom_command 的 OUTPUT 是在编译阶段才出现，
+    # 把它做成一个 INTERFACE 库，方便 target_link_libraries 关联依赖。
+    add_library(xdg_shell_proto INTERFACE)
+    target_sources(xdg_shell_proto INTERFACE
+        ${XDG_PROTO_C}
+        ${XDG_PROTO_H}
+    )
+    set_source_files_properties(${XDG_PROTO_C} PROPERTIES
+        GENERATED TRUE
+        LANGUAGE C
+    )
+    set_source_files_properties(${XDG_PROTO_H} PROPERTIES GENERATED TRUE)
+
+    set(platform_specific_sources
+        src/native/NativeWidget/linuxX11NativeWidget.cpp
+        src/native/NativeWidget/linuxWaylandNativeWidget.cpp
+    )
+
+    set(platform_link_libs
+        "${SKIA_ROOT}/lib/libskia.a"
+        pthread
+        dl
+        ${X11_LIBRARIES}
+        ${CAIRO_LIBRARIES}
+        ${WAYLAND_LIBRARIES}
+        ${XKB_LIBRARIES}
+        fontconfig
+        freetype
     )
 else()
     message(FATAL_ERROR "Unsupported platform")
@@ -66,13 +128,13 @@ endif()
 # ---------- 可执行目标 ----------
 add_executable(MaterialUI
     main.cpp
-    src/native/native_widget/NativeWidget.cpp
+    src/native/NativeWidget/NativeWidget.cpp
     ${platform_specific_sources}
     src/component/base/baseControler.hpp
     src/component/base/types.h
-    src/render/canvas.hpp
-    src/render/skia_canvas.hpp
-    src/render/skia_canvas.cpp
+    src/render/render.hpp
+    src/render/skiaRender.hpp
+    src/render/skiaRender.cpp
     src/component/input/Button.hpp
     src/app/application.hpp
 )
@@ -82,18 +144,47 @@ target_include_directories(MaterialUI PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
+# 平台专有 include（Linux / macOS / Windows 各自的 pkg-config 或 SDK 路径）
+if(APPLE)
+    # 暂时无需额外 include
+elseif(WIN32)
+    # SKIA_ROOT 已包含
+elseif(UNIX AND NOT APPLE)
+    target_include_directories(MaterialUI PRIVATE
+        ${X11_INCLUDE_DIRS}
+        ${CAIRO_INCLUDE_DIRS}
+        ${WAYLAND_INCLUDE_DIRS}
+        ${XKB_INCLUDE_DIRS}
+        "${CMAKE_CURRENT_BINARY_DIR}"      # 找到生成的 xdg-shell-client-protocol.h
+    )
+    # 让生成文件成为编译依赖
+    add_dependencies(MaterialUI xdg_shell_proto)
+endif()
+
 target_link_libraries(MaterialUI PRIVATE
     ${platform_link_libs}
 )
 
-# ---------- MSVC 编译选项（可选但推荐）----------
+# Linux 下把 xdg-shell 生成源加进可执行目标
+if(UNIX AND NOT APPLE)
+    target_sources(MaterialUI PRIVATE ${XDG_PROTO_C})
+endif()
+
+# ---------- MSVC 编译选项 ----------
 if(MSVC)
     target_compile_options(MaterialUI PRIVATE
-        /utf-8          # 源码按 UTF-8 解析，避免中文注释/字符串乱码
-        /W4             # 提高警告等级
-        /permissive-    # 更严格的标准一致性
-        /Zc:__cplusplus # __cplusplus 宏返回正确值
+        /utf-8
+        /W4
+        /permissive-
+        /Zc:__cplusplus
     )
     set_property(TARGET MaterialUI PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
+
+# ---------- GCC/Clang 下的通用告警（可选）----------
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(MaterialUI PRIVATE
+        -Wall -Wextra -Wno-unused-parameter
+    )
 endif()

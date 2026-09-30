@@ -1,4 +1,4 @@
-// src/native/native_widget/widget_win32.cpp
+// src/native/NativeWidget/winNativeWidget.cpp
 #include "NativeWidget.h"
 
 #if defined(_WIN32)
