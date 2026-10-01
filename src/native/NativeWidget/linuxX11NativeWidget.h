@@ -20,7 +20,7 @@
 
 namespace ui {
 
-class LinuxX11NativeWidget final : public Widget {
+class LinuxX11NativeWidget final : public NativeWidget {
 public:
     LinuxX11NativeWidget();
     ~LinuxX11NativeWidget() override;
@@ -30,7 +30,7 @@ public:
     void hide() override;
     void close() override;
 
-    bool pumpEvents(int timeoutMs = -1) override;
+    bool shouldQuit() const override { return shouldQuit_; }
 
     void setTitle(const std::string& title) override;
     void setSize(int w, int h) override;
@@ -73,7 +73,7 @@ private:
 };
 
 // 由 NativeWidget.cpp 调用
-std::unique_ptr<Widget> createX11Widget();
+std::unique_ptr<NativeWidget> createX11Widget();
 
 } // namespace ui
 #endif // __linux__

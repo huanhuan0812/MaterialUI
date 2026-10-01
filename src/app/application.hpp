@@ -1,35 +1,48 @@
-// src/ui/application.h
+// src/ui/application.hpp
 #pragma once
-#include "../native/NativeWidget/NativeWidget.h"
+
+#include "../native/event/EventLoop.hpp"
+#include "../window/window.hpp"
+
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace ui {
 
 class Application {
 public:
-    Application() {
-        window_ = Widget::create();   // 复用你现有的平台工厂
-    }
+    Application();
+    ~Application();
 
-    // 用户不需要知道 pumpEvents 的细节
-    int run() {
-        if (!window_) return -1;
-        while (window_->pumpEvents()) {   // 阻塞等待事件
-            tick();
-        }
-        return 0;
-    }
+    Application(const Application&) = delete;
+    Application& operator=(const Application&) = delete;
 
-    void quit() { window_->close(); }
+    // ---------- 窗口管理 ----------
+    Window* createWindow(const std::string& title, int w, int h);
+    void    destroyWindow(Window* w);   // 延迟销毁
 
-    Widget* native() { return window_.get(); }  // 供 Window 内部使用
+    // ---------- 生命周期 ----------
+    int  run();
+    void quit();
+
+    // ---------- 访问 ----------
+    EventLoop& loop() { return *loop_; }
+    bool isRunning() const { return running_; }
 
 private:
-    void tick() {
-        // 这里可以调用 pending 的重绘、动画
-    }
+    // Window 析构/关闭时回调，用于从 windows_ 中移除并解绑
+    void onWindowClosed(Window* w);
+    friend class Window;   // 允许 Window 调 onWindowClosed
 
-    std::unique_ptr<Widget> window_;
+    void flushDestroy();
+    void flushWindows();
+
+    std::unique_ptr<EventLoop>            loop_;
+    std::vector<std::unique_ptr<Window>>  windows_;
+    std::vector<Window*>                  pendingDestroy_;
+    bool                                  running_ = false;
+    bool                                  shouldQuit_ = false;
 };
 
 } // namespace ui

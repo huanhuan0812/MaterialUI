@@ -1,3 +1,4 @@
+// src/native/NativeWidget/NativeWidget.h
 #pragma once
 
 #include <memory>
@@ -5,29 +6,24 @@
 #include <functional>
 
 #include "../../component/base/types.h"
-#include "../../render/render.hpp"
+#include "../../canvas/view.hpp"
 
 namespace ui {
 
+class EventLoop;
+
 // ============================================================
-// Widget：平台窗口
+// NativeWidget：平台窗口
 // ============================================================
-class Widget {
+class NativeWidget {
 public:
-    virtual ~Widget() = default;
+    virtual ~NativeWidget() = default;
 
     // ---------- 生命周期 ----------
     virtual bool create(const std::string& title, int w, int h) = 0;
     virtual void show() = 0;
     virtual void hide() = 0;
     virtual void close() = 0;
-
-    // ---------- 主循环 ----------
-    // timeoutMs < 0  : 无限阻塞，直到有事件（全堵塞）
-    // timeoutMs == 0 : 非阻塞，立即返回
-    // timeoutMs > 0  : 最多等这么久（毫秒）
-    // 返回 false 表示应退出
-    virtual bool pumpEvents(int timeoutMs = -1) = 0;
 
     // ---------- 属性 ----------
     virtual void setTitle(const std::string& title) = 0;
@@ -40,16 +36,21 @@ public:
     virtual void repaintNow() = 0;
 
     // ---------- 回调 ----------
-    // 绘制：dirty 是本次需要重绘的区域；实现方必须至少保证 dirty 内被重绘
     using PaintCallback = std::function<void(Canvas& canvas, const Rect& dirty)>;
     virtual void setPaintCallback(PaintCallback cb) = 0;
 
-    // 事件：统一签名 void(const Event&)
     using EventCallback = std::function<void(const Event&)>;
     virtual void setEventCallback(EventCallback cb) = 0;
 
+    using CloseCallback = std::function<void()>;
+    virtual void setCloseCallback(CloseCallback cb) = 0;
+
+    // ---------- 与 EventLoop 关联 ----------
+    // 窗口关闭后，EventLoop 通过它判断是否应退出
+    virtual bool shouldQuit() const = 0;
+
     // ---------- 工厂 ----------
-    static std::unique_ptr<Widget> create();
+    static std::unique_ptr<NativeWidget> create();
 };
 
 } // namespace ui

@@ -1,5 +1,5 @@
-// src/render/skiaRender.cpp
-#include "skiaRender.hpp"
+// src/canvas/skiaView.cpp
+#include "skiaView.hpp"
 
 // ===== 只有这个文件能看到 Skia =====
 #include "include/core/SkCanvas.h"

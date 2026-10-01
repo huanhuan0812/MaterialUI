@@ -12,7 +12,7 @@
 #include <cstdint>
 
 #include "../../component/base/types.h"
-#include "../../render/win32_canvas.hpp"
+#include "../../canvas/win32View.hpp"
 
 namespace ui {
 namespace {
@@ -23,11 +23,13 @@ const wchar_t* kClassName = L"UiWidgetClass";
 // ============================================================
 // Win32Widget
 // ============================================================
-class Win32Widget : public Widget {
+class Win32Widget : public NativeWidget {
 public:
     ~Win32Widget() override {
         if (hwnd_) DestroyWindow(hwnd_);
     }
+
+    bool shouldQuit() const override { return shouldQuit_; }
 
     bool create(const std::string& title, int w, int h) override {
         HINSTANCE hInst = GetModuleHandleW(nullptr);
@@ -57,21 +59,6 @@ public:
     void close() override {
         shouldQuit_ = true;
         if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
-    }
-
-    bool pumpEvents(int timeoutMs) override {
-        DWORD wait = (timeoutMs < 0) ? INFINITE : static_cast<DWORD>(timeoutMs);
-        DWORD r = MsgWaitForMultipleObjects(0, nullptr, FALSE, wait, QS_ALLINPUT);
-
-        if (r == WAIT_OBJECT_0) {
-            MSG msg;
-            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-                if (msg.message == WM_QUIT) return false;
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }
-        return !shouldQuit_;
     }
 
     void setTitle(const std::string& t) override {
@@ -266,7 +253,7 @@ private:
 
 } // namespace
 
-std::unique_ptr<Widget> createWin32Widget() {
+std::unique_ptr<NativeWidget> createWin32Widget() {
     return std::make_unique<Win32Widget>();
 }
 

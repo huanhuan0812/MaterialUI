@@ -19,7 +19,7 @@
 
 namespace ui {
 
-class LinuxWaylandNativeWidget final : public Widget {
+class LinuxWaylandNativeWidget final : public NativeWidget {
 public:
     LinuxWaylandNativeWidget();
     ~LinuxWaylandNativeWidget() override;
@@ -28,8 +28,7 @@ public:
     void show() override;
     void hide() override;
     void close() override;
-
-    bool pumpEvents(int timeoutMs = -1) override;
+    bool shouldQuit() const override { return shouldQuit_; }
 
     void setTitle(const std::string& title) override;
     void setSize(int w, int h) override;

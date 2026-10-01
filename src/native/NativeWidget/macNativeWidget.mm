@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "../../render/cocoaRender.mm"
+#include "../../canvas/cocoaView.mm"
 
 // ---- 前向声明（非匿名命名空间）----
 namespace ui {
@@ -30,13 +30,13 @@ namespace ui {
 // ============================================================
 // CocoaWidget
 // ============================================================
-class CocoaWidget : public Widget {
+class CocoaWidget : public NativeWidget {
 public:
     CocoaWidget() {
         delegate_ = [[UiWidgetDelegate alloc] init];
         delegate_.owner = this;
     }
-
+    bool shouldQuit() const override { return shouldQuit_; }
     ~CocoaWidget() override {
         if (window_) {
             [window_ setDelegate:nil];
@@ -100,32 +100,6 @@ public:
         if (window_) [window_ close];
     }
 
-    // 全堵塞：timeoutMs < 0；-1 是默认值
-    bool pumpEvents(int timeoutMs) override {
-        @autoreleasepool {
-            NSDate* until;
-            if (timeoutMs < 0) {
-                until = [NSDate distantFuture];
-            } else if (timeoutMs == 0) {
-                until = [NSDate distantPast];
-            } else {
-                until = [NSDate dateWithTimeIntervalSinceNow:timeoutMs / 1000.0];
-            }
-
-            NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                                                untilDate:until
-                                                   inMode:NSDefaultRunLoopMode
-                                                  dequeue:YES];
-            if (event) {
-                [NSApp sendEvent:event];
-            }
-
-            // 把 pending 的 drawRect 排空（关键：否则 invalidate 不生效）
-            if (view_) [view_ displayIfNeeded];
-        }
-        return !shouldQuit_;
-    }
-
     void setTitle(const std::string& t) override {
         window_.title = [NSString stringWithUTF8String:t.c_str()];
     }
@@ -153,6 +127,7 @@ public:
 
     void setPaintCallback(PaintCallback cb) override { paintCb_ = std::move(cb); }
     void setEventCallback(EventCallback cb) override { eventCb_ = std::move(cb); }
+    void setCloseCallback(CloseCallback cb) override { closeCb_ = std::move(cb); }
 
     // ---------- 供 ObjC 调用 ----------
     void onPaint(CGContextRef ctx, const Rect& dirty) {
@@ -162,7 +137,7 @@ public:
         }
     }
 
-    void onWindowClosed() { shouldQuit_ = true; }
+    void onWindowClosed() { shouldQuit_ = true; if (closeCb_) closeCb_();}
 
 private:
     NSWindow*         window_   = nil;
@@ -172,9 +147,10 @@ private:
 
     PaintCallback paintCb_;
     EventCallback eventCb_;
+    CloseCallback closeCb_;
 };
 
-std::unique_ptr<Widget> createCocoaWidget() {
+std::unique_ptr<NativeWidget> createCocoaWidget() {
     return std::make_unique<CocoaWidget>();
 }
 

@@ -325,7 +325,7 @@ void LinuxX11NativeWidget::setEventCallback(EventCallback cb) { eventCb_ = std::
 // ------------------------------------------------------------------
 // 工厂
 // ------------------------------------------------------------------
-std::unique_ptr<Widget> createX11Widget() {
+std::unique_ptr<NativeWidget> createX11Widget() {
     auto w = std::make_unique<LinuxX11NativeWidget>();
     if (!w->create("UI", 800, 600)) return nullptr;
     return w;

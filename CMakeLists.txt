@@ -17,7 +17,9 @@ if(APPLE)
 
     set(platform_specific_sources
         src/native/NativeWidget/macNativeWidget.mm
-        src/render/cocoaRender.mm
+        src/canvas/cocoaView.mm
+        src/native/systemApi/macApi.mm
+        src/native/event/cocoaEventLoop.mm
     )
 
     set(platform_link_libs
@@ -43,6 +45,9 @@ if(APPLE)
 elseif(WIN32)
     set(platform_specific_sources
         src/native/NativeWidget/winNativeWidget.cpp
+        src/canvas/win32View.cpp
+        src/native/systemApi/winApi.cpp
+        src/native/event/win32EventLoop.cpp
     )
 
     set(platform_link_libs
@@ -108,6 +113,8 @@ elseif(UNIX AND NOT APPLE)
     set(platform_specific_sources
         src/native/NativeWidget/linuxX11NativeWidget.cpp
         src/native/NativeWidget/linuxWaylandNativeWidget.cpp
+        src/native/event/x11EventLoop.cpp
+        src/native/event/waylandEventLoop.cpp
     )
 
     set(platform_link_libs
@@ -132,11 +139,18 @@ add_executable(MaterialUI
     ${platform_specific_sources}
     src/component/base/baseControler.hpp
     src/component/base/types.h
-    src/render/render.hpp
-    src/render/skiaRender.hpp
-    src/render/skiaRender.cpp
+    src/canvas/view.hpp
+    src/canvas/skiaView.hpp
+    src/canvas/skiaView.cpp
     src/component/input/Button.hpp
     src/app/application.hpp
+    src/window/window.hpp
+    src/native/event/EventLoop.hpp
+    src/native/event/EventLoop.cpp
+    src/window/window.cpp
+    src/app/application.cpp
+    src/native/systemApi/sysApi.hpp
+    src/native/systemApi/sysApi.cpp
 )
 
 target_include_directories(MaterialUI PRIVATE

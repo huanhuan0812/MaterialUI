@@ -2,13 +2,13 @@
 #include "NativeWidget.h"
 
 #if defined(_WIN32)
-namespace ui { std::unique_ptr<Widget> createWin32Widget(); }
+namespace ui { std::unique_ptr<NativeWidget> createWin32Widget(); }
 #elif defined(__APPLE__)
-namespace ui { std::unique_ptr<Widget> createCocoaWidget(); }
+namespace ui { std::unique_ptr<NativeWidget> createCocoaWidget(); }
 #elif defined(__linux__)
 namespace ui {
-    std::unique_ptr<Widget> createX11Widget();
-    std::unique_ptr<Widget> createWaylandWidget();
+    std::unique_ptr<NativeWidget> createX11Widget();
+    std::unique_ptr<NativeWidget> createWaylandWidget();
 }
 #  include <cstdlib>
 #  include <cstring>
@@ -34,7 +34,7 @@ static bool hasX11() {
 
 #endif
 
-std::unique_ptr<Widget> Widget::create() {
+std::unique_ptr<NativeWidget> NativeWidget::create() {
 #if defined(_WIN32)
     return createWin32Widget();
 #elif defined(__APPLE__)
