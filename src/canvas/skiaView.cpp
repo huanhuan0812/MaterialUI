@@ -212,7 +212,7 @@ void SkiaCanvas::drawShadow(const Rect& r, int radius, int blur, Color color) {
     p.setMaskFilter(SkMaskFilter::MakeBlur(
         SkBlurStyle::kNormal_SkBlurStyle, SkIntToScalar(blur)));
     SkRect sr = toSkRect(r);
-    sr.offset(0, SkIntToScalar(blur / 2));
+    sr.offset(0, SkIntToScalar(int(blur / 2)));
     impl_->canvas->drawRoundRect(sr,
         SkIntToScalar(radius), SkIntToScalar(radius), p);
 }
