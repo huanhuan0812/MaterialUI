@@ -8,7 +8,7 @@ find_package(PkgConfig REQUIRED)
 # ---------- 平台源文件 & 平台链接库 ----------
 if(APPLE)
     set(CMAKE_OSX_ARCHITECTURES "arm64")
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
 
     set(platform_specific_sources
         src/native/NativeWidget/macNativeWidget.mm
