@@ -1,11 +1,14 @@
 #include "window.hpp"
 
+#include <algorithm>
+
 namespace ui {
 
 Window::Window() = default;
 
 Window::Window(const std::string& title, int w, int h) {
-    create(title, w, h);
+    // 不在这里 create，等 factory 设置后再 create
+    (void)title; (void)w; (void)h;
 }
 
 Window::~Window() {
@@ -23,22 +26,33 @@ Window::~Window() {
 Window::Window(Window&&) noexcept = default;
 Window& Window::operator=(Window&&) noexcept = default;
 
-// ---------- 生命周期 ----------
-
 bool Window::create(const std::string& title, int w, int h) {
-    if (widget_) return false;               // 已创建
-    widget_ = NativeWidget::create();              // 平台工厂
-    if (!widget_) return false;              // 平台不支持
-    if (!widget_->create(title, w, h)) {     // 原生创建失败
+    if (widget_) return false;
+    widget_ = NativeWidget::create();
+    if (!widget_) return false;
+    if (!widget_->create(title, w, h)) {
         widget_.reset();
         return false;
     }
+
+    if (widgetFactory_) {
+        root_ = widgetFactory_();
+        if (root_) {
+            root_->setGeometry({0, 0, w, h});
+            root_->setRedrawCallback([this]() {
+                if (widget_) widget_->invalidateAll();
+            });
+        }
+    }
+
     bindCallbacks();
     return true;
 }
 
 void Window::show() {
-    if (widget_) widget_->show();
+    if (widget_) {
+        widget_->show();
+    }
 }
 
 void Window::hide() {
@@ -53,11 +67,9 @@ void Window::close() {
     if (closeCallback_) {
         auto cb = std::move(closeCallback_);
         closeCallback_ = nullptr;
-        cb();          // 通知 Application 移除
+        cb();
     }
 }
-
-// ---------- 属性 ----------
 
 void Window::setTitle(const std::string& title) {
     if (widget_) widget_->setTitle(title);
@@ -65,6 +77,7 @@ void Window::setTitle(const std::string& title) {
 
 void Window::setSize(int w, int h) {
     if (widget_) widget_->setSize(w, h);
+    if (root_)   root_->setGeometry({0, 0, w, h});
 }
 
 void Window::getSize(int& w, int& h) const {
@@ -74,8 +87,6 @@ void Window::getSize(int& w, int& h) const {
         w = h = 0;
     }
 }
-
-// ---------- 重绘 ----------
 
 void Window::invalidate(const Rect& r) {
     if (widget_) widget_->invalidate(r);
@@ -89,8 +100,6 @@ void Window::repaintNow() {
     if (widget_) widget_->repaintNow();
 }
 
-// ---------- 回调 ----------
-
 void Window::setPaintHandler(PaintHandler handler) {
     paintHandler_ = std::move(handler);
 }
@@ -99,32 +108,33 @@ void Window::setEventHandler(EventHandler handler) {
     eventHandler_ = std::move(handler);
 }
 
-// ---------- EventLoop 查询 ----------
-
 bool Window::shouldQuit() const {
     return widget_ ? widget_->shouldQuit() : true;
 }
 
-// ---------- 默认虚钩子 ----------
-
 void Window::onPaint(Canvas& canvas, const Rect& dirty) {
-    if (paintHandler_) {
-        paintHandler_(canvas, dirty);
+    if (root_) {
+        root_->render(canvas, 0, 0);
     }
+    if (paintHandler_) paintHandler_(canvas, dirty);
 }
 
 void Window::onEvent(const Event& event) {
-    if (eventHandler_) {
-        eventHandler_(event);
+    if (event.type == EventType::Resize && root_) {
+        root_->setGeometry({0, 0, event.width, event.height});
+        if (widget_) widget_->invalidateAll();
     }
-}
 
-// ---------- 绑定 Widget 回调到本类 ----------
+    if (root_ && root_->dispatchEvent(event)) {
+        if (eventHandler_) eventHandler_(event);
+        return;
+    }
+    if (eventHandler_) eventHandler_(event);
+}
 
 void Window::bindCallbacks() {
     if (!widget_) return;
 
-    // 捕获 this 安全：Window 析构时会先 close，不再触发回调
     widget_->setPaintCallback(
         [this](Canvas& canvas, const Rect& dirty) {
             this->onPaint(canvas, dirty);
@@ -139,7 +149,7 @@ void Window::bindCallbacks() {
             if (closeCallback_) {
                 auto cb = std::move(closeCallback_);
                 closeCallback_ = nullptr;
-                cb();          // 通知 Application 移除
+                cb();
             }
         });
 }

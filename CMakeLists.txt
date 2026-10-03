@@ -18,6 +18,7 @@ if(APPLE)
     set(platform_specific_sources
         src/native/NativeWidget/macNativeWidget.mm
         src/canvas/cocoaView.mm
+        src/render/cocoaCanvas.mm
         src/native/systemApi/macApi.mm
         src/native/event/cocoaEventLoop.mm
     )
@@ -71,9 +72,8 @@ elseif(UNIX AND NOT APPLE)
     pkg_check_modules(X11     REQUIRED x11 xext xrender)
     pkg_check_modules(CAIRO   REQUIRED cairo)
     pkg_check_modules(WAYLAND REQUIRED wayland-client)
-    pkg_check_modules(XKB     REQUIRED xkbcommon)   # 若暂时不做键盘字符解析，可去掉
+    pkg_check_modules(XKB     REQUIRED xkbcommon)
 
-    # 生成 xdg-shell 协议代码（放在构建目录里）
     find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
     set(XDG_SHELL_XML "/usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml")
 
@@ -97,8 +97,6 @@ elseif(UNIX AND NOT APPLE)
         VERBATIM
     )
 
-    # 因为 add_custom_command 的 OUTPUT 是在编译阶段才出现，
-    # 把它做成一个 INTERFACE 库，方便 target_link_libraries 关联依赖。
     add_library(xdg_shell_proto INTERFACE)
     target_sources(xdg_shell_proto INTERFACE
         ${XDG_PROTO_C}
@@ -137,18 +135,24 @@ add_executable(MaterialUI
     main.cpp
     src/native/NativeWidget/NativeWidget.cpp
     ${platform_specific_sources}
-    src/component/base/baseControler.hpp
     src/component/base/types.h
-    src/canvas/view.hpp
-    src/canvas/skiaView.hpp
-    src/canvas/skiaView.cpp
-    src/component/input/Button.hpp
-    src/app/application.hpp
+    src/render/view.hpp
+    src/render/view.cpp
+    src/render/canvas.hpp
+    src/render/skiaCanvas.hpp
+    src/render/skiaCanvas.cpp
+    src/render/cocoaCanvas.hpp
+    src/render/gdiCanvas.hpp
+    src/render/gdiCanvas.cpp
+    src/component/widget.hpp
+    src/component/button/button.hpp
+    src/core/handle_pool.hpp
+    src/core/application.hpp
+    src/core/application.cpp
     src/window/window.hpp
+    src/window/window.cpp
     src/native/event/EventLoop.hpp
     src/native/event/EventLoop.cpp
-    src/window/window.cpp
-    src/app/application.cpp
     src/native/systemApi/sysApi.hpp
     src/native/systemApi/sysApi.cpp
 )
@@ -169,9 +173,8 @@ elseif(UNIX AND NOT APPLE)
         ${CAIRO_INCLUDE_DIRS}
         ${WAYLAND_INCLUDE_DIRS}
         ${XKB_INCLUDE_DIRS}
-        "${CMAKE_CURRENT_BINARY_DIR}"      # 找到生成的 xdg-shell-client-protocol.h
+        "${CMAKE_CURRENT_BINARY_DIR}"
     )
-    # 让生成文件成为编译依赖
     add_dependencies(MaterialUI xdg_shell_proto)
 endif()
 
@@ -179,7 +182,6 @@ target_link_libraries(MaterialUI PRIVATE
     ${platform_link_libs}
 )
 
-# Linux 下把 xdg-shell 生成源加进可执行目标
 if(UNIX AND NOT APPLE)
     target_sources(MaterialUI PRIVATE ${XDG_PROTO_C})
 endif()

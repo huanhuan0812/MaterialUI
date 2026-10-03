@@ -2,7 +2,8 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 
-#include "render.hpp"
+#include "render/canvas.hpp"
+#include "render/view.hpp"
 
 #include <windows.h>
 #include <windowsx.h>   // GET_X_LPARAM / GET_Y_LPARAM
@@ -235,6 +236,22 @@ public:
 
     // ---------- 后端标识 ----------
     Backend backend() const override { return Backend::GDI; }
+
+    void drawView(const View& view, int x, int y) override {
+        if (!view.data() || view.width() <= 0 || view.height() <= 0) return;
+        
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = view.width();
+        bmi.bmiHeader.biHeight = -view.height();  // top-down DIB
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        
+        StretchDIBits(hdc_, x, y, view.width(), view.height(),
+                      0, 0, view.width(), view.height(),
+                      view.data(), &bmi, DIB_RGB_COLORS, SRCCOPY);
+    }
 
 private:
     void applyFont() {

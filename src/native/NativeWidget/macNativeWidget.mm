@@ -55,6 +55,7 @@ public:
     // ---------- Widget 接口 ----------
     bool create(const std::string& title, int w, int h) override {
         @autoreleasepool {
+            printf("[CocoaWidget::create] title=%s %dx%d\n", title.c_str(), w, h);
             [NSApplication sharedApplication];
             [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
             if (![NSApp delegate]) {
@@ -84,11 +85,13 @@ public:
             window_.contentView = view_;
 
             [window_ center];
+            printf("[CocoaWidget::create] window created\n");
             return true;
         }
     }
 
     void show() override {
+        printf("[CocoaWidget::show] showing window\n");
         [window_ makeKeyAndOrderFront:nil];
         [NSApp activateIgnoringOtherApps:YES];
     }
@@ -131,8 +134,17 @@ public:
 
     // ---------- 供 ObjC 调用 ----------
     void onPaint(CGContextRef ctx, const Rect& dirty) {
+        {
+            CocoaScreenCanvas dbg(ctx);
+            dbg.setFontSize(24);
+            dbg.setFontBold(true);
+            dbg.drawText("HELLO", 20, 20, 0xFFFF0000);
+            dbg.fillRect(Rect{20, 60, 100, 4}, 0xFF00FF00);
+            fprintf(stderr, "[onPaint] drew debug text, ctx=%p\n", (void*)ctx);
+            fflush(stderr);
+        }
         if (paintCb_) {
-            CocoaCanvas canvas(ctx);
+            CocoaScreenCanvas canvas(ctx);
             paintCb_(canvas, dirty);
         }
     }
