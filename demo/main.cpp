@@ -1,4 +1,4 @@
-#include "src/app/application.hpp"
+#include "app/application.hpp"
 #include <cstdio>
 
 int main() {

@@ -1,7 +1,7 @@
 // src/render/canvas.hpp
 #pragma once
 
-#include "../component/base/types.h"
+#include "../core/types.h"
 #include <string>
 
 namespace ui {

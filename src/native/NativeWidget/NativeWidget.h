@@ -5,7 +5,7 @@
 #include <string>
 #include <functional>
 
-#include "../../component/base/types.h"
+#include "../../core/types.h"
 #include "../../canvas/view.hpp"
 
 namespace ui {

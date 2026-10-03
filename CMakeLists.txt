@@ -138,7 +138,7 @@ add_executable(MaterialUI
     src/native/NativeWidget/NativeWidget.cpp
     ${platform_specific_sources}
     src/component/base/baseControler.hpp
-    src/component/base/types.h
+    src/core/types.h
     src/canvas/view.hpp
     src/canvas/skiaView.hpp
     src/canvas/skiaView.cpp
@@ -151,6 +151,7 @@ add_executable(MaterialUI
     src/app/application.cpp
     src/native/systemApi/sysApi.hpp
     src/native/systemApi/sysApi.cpp
+    src/core/handlePool.hpp
 )
 
 target_include_directories(MaterialUI PRIVATE
