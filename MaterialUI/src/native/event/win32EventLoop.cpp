@@ -15,6 +15,12 @@ public:
         widget_ = widget;
     }
 
+    void detach(NativeWidget* widget) override {
+        if (widget_ == widget) {
+            widget_ = nullptr;
+        }
+    }
+
     int run() override {
         while (!shouldQuit()) {
             if (!step(-1)) break;

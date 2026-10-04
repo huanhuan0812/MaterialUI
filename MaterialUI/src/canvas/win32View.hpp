@@ -2,7 +2,7 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 
-#include "render.hpp"
+#include "view.hpp"
 
 #include <windows.h>
 #include <windowsx.h>   // GET_X_LPARAM / GET_Y_LPARAM
@@ -107,7 +107,7 @@ public:
     // ---------- 阴影 ----------
     // GDI 无 alpha 混合，用 AlphaBlend（msimg32）画柔化矩形
     void drawShadow(const Rect& r, int radius, int elevation,
-                    Color shadow) override {
+                    Color shadow=0x3C000000) override {
         if (elevation <= 0) return;
 
         // 逐层半透明叠加，模拟阴影扩散
@@ -152,8 +152,8 @@ public:
     }
 
     void drawCard(const Rect& r, int radius, Color fill,
-                  int elevation) override {
-        if (elevation > 0) drawShadow(r, radius, elevation);
+              int elevation) override {
+        if (elevation > 0) drawShadow(r, radius, elevation);  // 靠默认值补 shadow
         fillRoundRect(r, radius, fill);
     }
 

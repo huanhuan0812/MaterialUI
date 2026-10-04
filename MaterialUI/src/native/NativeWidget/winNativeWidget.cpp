@@ -11,7 +11,7 @@
 #include <vector>
 #include <cstdint>
 
-#include "../../component/base/types.h"
+#include "../../core/types.h"
 #include "../../canvas/win32View.hpp"
 
 namespace ui {
@@ -84,6 +84,7 @@ public:
 
     void setPaintCallback(PaintCallback cb) override { paintCb_ = std::move(cb); }
     void setEventCallback(EventCallback cb) override { eventCb_ = std::move(cb); }
+    void setCloseCallback(CloseCallback cb) override { closeCb_ = std::move(cb); }
 
 private:
     void emit(Event e) {
@@ -249,6 +250,7 @@ private:
     bool trackingMouse_ = false;
     PaintCallback paintCb_;
     EventCallback eventCb_;
+    CloseCallback closeCb_;
 };
 
 } // namespace
