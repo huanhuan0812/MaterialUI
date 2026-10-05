@@ -12,7 +12,7 @@ if(APPLE)
 
     set(platform_specific_sources
         src/native/NativeWidget/macNativeWidget.mm
-        src/canvas/cocoaView.mm
+        src/canvas/cocoaCanvas.mm
         src/native/systemApi/macApi.mm
         src/native/event/cocoaEventLoop.mm
     )
@@ -40,7 +40,7 @@ if(APPLE)
 elseif(WIN32)
     set(platform_specific_sources
         src/native/NativeWidget/winNativeWidget.cpp
-        src/canvas/win32View.cpp
+        src/canvas/win32Canvas.cpp
         src/native/systemApi/winApi.cpp
         src/native/event/win32EventLoop.cpp
     )
@@ -107,11 +107,10 @@ endif()
 add_library(MaterialUI STATIC
     src/native/NativeWidget/NativeWidget.cpp
     ${platform_specific_sources}
-    src/component/base/baseControler.hpp
     src/core/types.h
-    src/canvas/view.hpp
-    src/canvas/skiaView.hpp
-    src/canvas/skiaView.cpp
+    src/canvas/canvas.hpp
+    src/canvas/skiaCanvas.hpp
+    src/canvas/skiaCanvas.cpp
     src/component/input/Button.hpp
     src/app/application.hpp
     src/window/window.hpp
@@ -122,6 +121,8 @@ add_library(MaterialUI STATIC
     src/native/systemApi/sysApi.hpp
     src/native/systemApi/sysApi.cpp
     src/core/handlePool.hpp
+    src/core/widgetId.hpp
+    src/component/widget.hpp
 )
 
 # ---------- 头文件 & 包含目录（给库自己也给 demo 用 → PUBLIC）----------

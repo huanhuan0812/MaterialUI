@@ -6,7 +6,7 @@
 #include <functional>
 
 #include "../../core/types.h"
-#include "../../canvas/view.hpp"
+#include "../../canvas/canvas.hpp"
 
 namespace ui {
 

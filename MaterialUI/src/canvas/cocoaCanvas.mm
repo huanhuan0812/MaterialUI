@@ -1,4 +1,4 @@
-#include "view.hpp"
+#include "canvas.hpp"
 
 #include <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>

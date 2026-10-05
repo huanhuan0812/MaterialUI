@@ -2,7 +2,7 @@
 
 #if defined(_WIN32) || defined(_WIN64)
 
-#include "view.hpp"
+#include "canvas.hpp"
 
 #include <windows.h>
 #include <windowsx.h>   // GET_X_LPARAM / GET_Y_LPARAM

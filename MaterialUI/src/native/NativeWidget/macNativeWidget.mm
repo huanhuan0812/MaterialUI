@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "../../canvas/cocoaView.mm"
+#include "../../canvas/cocoaCanvas.mm"
 
 // ---- 前向声明（非匿名命名空间）----
 namespace ui {

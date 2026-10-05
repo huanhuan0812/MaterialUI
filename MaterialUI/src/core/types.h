@@ -65,6 +65,13 @@ enum class EventType {
     Close,
 };
 
+enum class MouseButton {
+    None,
+    Left,
+    Right,
+    Middle,
+};
+
 struct Event {
     EventType type = EventType::MouseMove;
 
