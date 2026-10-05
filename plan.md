@@ -1,53 +1,74 @@
-# 完整修改方案总结
+# UI 框架完整设计（HandlePool 向后排）
 
 ## 一、总体架构
 
 ```
-┌──────────────────────────────────────────────────┐
-│  Application（驱动引擎）                          │
-│  ├─ EventLoop            事件循环                 │
-│  ├─ HandlePool<Widget>   控件句柄池               │
-│  ├─ HandlePool<View>     视图句柄池（可选）        │
-│  └─ windows_[]           窗口列表                 │
-└──────────────────────────────────────────────────┘
-                     │ 驱动
-                     ▼
-┌──────────────────────────────────────────────────┐
-│  Window（宿主 + 桥接）                            │
-│  ├─ mainView_    主 View（铺满客户区）            │
-│  └─ root Widget  根控件（无 View，直接画到 mainView）│
-└──────────────────────────────────────────────────┘
-                     │ 递归
-                     ▼
-┌──────────────────────────────────────────────────┐
-│  Widget（逻辑单元）                               │
-│  ├─ geometry_          相对父的位置               │
-│  ├─ view_（可选）      通用绘制容器               │
-│  ├─ children_[]        子控件                     │
-│  ├─ render(target,x,y) 坐标累加                   │
-│  ├─ dispatchEvent(e)   递归 + 命中测试            │
-│  └─ preferredBackend() 声明后端偏好               │
-└──────────────────────────────────────────────────┘
-                     │ 可选持有
-                     ▼
-┌──────────────────────────────────────────────────┐
-│  View（通用绘制容器 / 最小绘制单元）              │
-│  ├─ backend()          自己的后端类型             │
-│  ├─ canvas()           操作本 View 的 Canvas      │
-│  ├─ compositeTo()      跨后端合成入口             │
-│  └─ 实现：CPU / GPU_Texture / NativeLayer / External│
-└──────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Application（驱动引擎）                                │
+│  ├─ EventLoop            事件循环                       │
+│  ├─ windows_[]           窗口列表                       │
+│  └─ createWidget<T>()    直接返回 shared_ptr<T>         │
+│                                                        │
+│  [延期] HandlePool<Widget>  ← 需要时再加                │
+└────────────────────────────────────────────────────────┘
+                        │ 驱动
+                        ▼
+┌────────────────────────────────────────────────────────┐
+│  Window（宿主 + 桥接）                                  │
+│  ├─ mainView_      主 View（铺满客户区）                │
+│  └─ root_          根 Widget（无 View，画到 mainView_） │
+└────────────────────────────────────────────────────────┘
+                        │ 递归
+                        ▼
+┌────────────────────────────────────────────────────────┐
+│  Widget（逻辑单元）                                     │
+│  ├─ id_                  自增 id（延期池的伏笔）         │
+│  ├─ geometry_            相对父的位置                   │
+│  ├─ view_（可选）        通用绘制容器                   │
+│  ├─ children_[]          子控件（shared_ptr 持有）      │
+│  ├─ parent_（裸指针）    反向引用（不拥有）             │
+│  ├─ render(target,x,y)   坐标累加                       │
+│  ├─ dispatchEvent(e)     递归 + 命中测试                │
+│  └─ preferredBackend()   声明后端偏好                   │
+└────────────────────────────────────────────────────────┘
+                        │ 可选持有
+                        ▼
+┌────────────────────────────────────────────────────────┐
+│  View（通用绘制容器 / 最小绘制单元）                    │
+│  ├─ backend()            自己的后端类型                 │
+│  ├─ canvas()             操作本 View 的 Canvas          │
+│  ├─ compositeTo()        跨后端合成入口                 │
+│  └─ 实现：CPU / GPU_Texture / NativeLayer / External    │
+└────────────────────────────────────────────────────────┘
+                        │ GPU 路径
+                        ▼
+┌────────────────────────────────────────────────────────┐
+│  GpuCanvas（2D 批处理、图集、状态排序）                 │
+└────────────────────────────────────────────────────────┘
+                        │
+                        ▼
+┌────────────────────────────────────────────────────────┐
+│  RHI（渲染硬件接口）                                    │
+│  ├─ Device / Queue / CommandBuffer                      │
+│  ├─ Texture / Sampler / Pipeline / Buffer               │
+│  └─ Swapchain / RenderPass                              │
+└────────────────────────────────────────────────────────┘
+                        │
+     ┌──────────┬───────┼───────┬──────────┐
+     ▼          ▼       ▼       ▼          ▼
+  OpenGL     D3D11   D3D12   Vulkan     Metal
+   GLES
 ```
 
 ---
 
-## 二、三条核心原则
+## 二、核心原则
 
 ### 原则 1：View 是通用绘制容器
 
 - 任何 Widget **都可以**持有 View
-- View 不是 Layout 专属
-- 是否需要 View 由 Widget 按需决定
+- View **不是 Layout 专属**
+- 是否需要 View 由 Widget **按需决定**
 
 ### 原则 2：View 可选、按需创建
 
@@ -64,40 +85,260 @@
 
 ### 原则 3：后端是 View 的类型属性
 
-- **View 是什么，后端就是什么**，不是运行时可变状态
+- **View 是什么，后端就是什么**，运行时不可变
 - Widget 只**声明偏好**，工厂负责创建和降级
-- CPU 是**保底后端**，任何平台可用
+- CPU 是**保底后端**
+
+### 原则 4：6 个图形 API → 必须上 RHI
+
+- OpenGL / GLES / D3D11 / D3D12 / Vulkan / Metal
+- 直连 = 6 套代码，不可能维护
+- **RHI 是核心基础设施，不是可选优化**
+
+### 原则 5：RHI 是 2D 薄抽象
+
+- 只服务 UI 需求：纹理、管线、命令、交换链
+- 不做通用 3D RHI
+- 不暴露 barrier / descriptor / 多队列
+
+### 原则 6：生命周期用 shared_ptr，HandlePool 向后排
+
+- **当前**：`shared_ptr`（父子）+ 裸指针（反向引用）
+- **伏笔**：Widget 保留自增 `id_`
+- **将来**：需要脚本 / 序列化 / 跨进程时，再加 HandlePool
 
 ---
 
-## 三、各模块修改清单
+## 三、目录结构
 
-### ① HandlePool（新增）
-
-**文件**：`src/core/handle_pool.hpp`
-
-```cpp
-template <typename T>
-class HandlePool {
-    Handle add(std::shared_ptr<T>);
-    void   remove(Handle);
-    std::shared_ptr<T> get(Handle) const;
-    template <typename Fn> void forEach(Fn&&) const;
-    size_t size() const;
-};
+```
+src/
+├── core/
+│   ├── widget_id.hpp        【新增】自增 id
+│   └── application.hpp/.cpp 【改】去 HandlePool
+│
+├── render/
+│   ├── canvas.hpp           【改】加 drawView()
+│   ├── view.hpp             【重写】通用容器 + 多后端
+│   ├── view_factory.hpp     【新增】后端工厂
+│   └── cpu/
+│       ├── cpu_view.hpp
+│       └── cpu_canvas.hpp
+│
+├── rhi/
+│   ├── device.hpp
+│   ├── texture.hpp
+│   ├── pipeline.hpp
+│   ├── command_buffer.hpp
+│   ├── swapchain.hpp
+│   └── backends/
+│       ├── metal/
+│       ├── vulkan/
+│       ├── d3d11/
+│       ├── d3d12/
+│       ├── gl/
+│       └── gles/
+│
+├── component/
+│   ├── widget.hpp           【替换 BaseController】
+│   ├── layout.hpp           【新增】
+│   ├── button.hpp           【改】继承 Widget
+│   ├── scroll_view.hpp      【新增】
+│   └── modal.hpp            【新增】
+│
+├── window/
+│   └── window.hpp/.cpp      【改】加 mainView_ + root_
+│
+└── native/
+    └── ...                  【不动】
 ```
 
-- `Handle = uint32_t`
-- 单调递增 id
-- 可实例化 `<Widget>` 和 `<View>`
+---
+
+## 四、核心模块设计
+
+### ① WidgetId（新增）
+
+**文件**：`src/core/widget_id.hpp`
+
+```cpp
+#pragma once
+#include <cstdint>
+
+namespace ui {
+
+using WidgetId = uint32_t;
+constexpr WidgetId kInvalidWidgetId = 0;
+
+inline WidgetId nextWidgetId() {
+    static WidgetId counter = 1;
+    return counter++;
+}
+
+} // namespace ui
+```
+
+- 极简
+- 每个 Widget 有稳定 id
+- **将来升级 HandlePool 时，id 直接当 handle**
 
 ---
 
-### ② View（重写，通用容器 + 多后端）
+### ② Widget（替换 BaseController）
 
-**文件**：`src/render/view.hpp` / `.cpp`
+**文件**：`src/component/widget.hpp`
 
 ```cpp
+#pragma once
+
+#include "core/widget_id.hpp"
+#include "render/view.hpp"
+#include "types.h"
+
+#include <memory>
+#include <vector>
+#include <functional>
+
+namespace ui {
+
+class Widget : public std::enable_shared_from_this<Widget> {
+public:
+    Widget() : id_(nextWidgetId()) {}
+    virtual ~Widget() = default;
+
+    // ========== 身份 ==========
+    WidgetId id() const { return id_; }
+
+    // ========== 几何（相对父） ==========
+    void setGeometry(const Rect& r) { geometry_ = r; }
+    Rect geometry() const { return geometry_; }
+
+    // ========== View（可选） ==========
+    View* view() const { return view_.get(); }
+
+    View* ensureView(int w, int h) {
+        if (!view_ || view_->width() != w || view_->height() != h) {
+            view_ = createView(w, h);
+        }
+        return view_.get();
+    }
+
+    void releaseView() { view_.reset(); }
+
+    // ========== 子控件 ==========
+    void addChild(std::shared_ptr<Widget> c) {
+        if (!c) return;
+        c->parent_ = this;
+        children_.push_back(std::move(c));
+    }
+
+    const std::vector<std::shared_ptr<Widget>>& children() const {
+        return children_;
+    }
+
+    Widget* parent() const { return parent_; }
+
+    // ========== 渲染入口 ==========
+    virtual void render(Canvas& target, int x, int y) {
+        if (view_) {
+            // 有 View：画进自己，再合成
+            Canvas& my = view_->canvas();
+            my.clear(0);
+            onRenderSelf(my);
+            for (auto& c : children_) {
+                c->render(my, c->geometry_.x, c->geometry_.y);
+            }
+            target.drawView(*view_, x, y);
+        } else {
+            // 无 View：直接画
+            target.save();
+            target.translate(x, y);
+            onRenderSelf(target);
+            for (auto& c : children_) {
+                c->render(target, x + c->geometry_.x, y + c->geometry_.y);
+            }
+            target.restore();
+        }
+    }
+
+    // ========== 事件 ==========
+    virtual bool dispatchEvent(const Event& e) {
+        for (auto it = children_.rbegin(); it != children_.rend(); ++it) {
+            if ((*it)->dispatchEvent(e)) return true;
+        }
+
+        if (!hitTest(e.x, e.y)) return false;
+
+        Event local = e;
+        local.x -= geometry_.x;
+        local.y -= geometry_.y;
+        onEvent(local);
+        return true;
+    }
+
+    bool hitTest(int x, int y) const {
+        return x >= geometry_.x && x < geometry_.x + geometry_.w &&
+               y >= geometry_.y && y < geometry_.y + geometry_.h;
+    }
+
+    // ========== 重绘 ==========
+    void requestRedraw() {
+        if (redrawCb_) redrawCb_();
+    }
+
+    void setRedrawCallback(std::function<void()> cb) {
+        redrawCb_ = std::move(cb);
+    }
+
+protected:
+    // ========== 子类钩子 ==========
+    virtual void onRenderSelf(Canvas& /*cv*/) {}
+    virtual void onEvent(const Event& /*e*/) {}
+
+    virtual View::Backend preferredBackend() const {
+        return View::Backend::CPU;
+    }
+
+    virtual std::unique_ptr<View> createView(int w, int h) {
+        return ViewFactory::create(preferredBackend(), w, h);
+    }
+
+private:
+    WidgetId id_;
+    Rect geometry_{0, 0, 0, 0};
+    std::unique_ptr<View> view_;                    // 可选
+    std::vector<std::shared_ptr<Widget>> children_; // 正向持有
+    Widget* parent_ = nullptr;                      // 反向引用（不拥有）
+    std::function<void()> redrawCb_;
+};
+
+} // namespace ui
+```
+
+**关键点**：
+
+- `id_` 自增，为将来 HandlePool 留伏笔
+- `view_` 可选，`unique_ptr` 独占
+- `children_` 用 `shared_ptr`，`parent_` 用裸指针，**无循环引用**
+- `render` 分两条路径（有 View / 无 View）
+- `dispatchEvent` 坐标语义统一
+
+---
+
+### ③ View（重写，通用容器 + 多后端）
+
+**文件**：`src/render/view.hpp`
+
+```cpp
+#pragma once
+
+#include "types.h"
+#include <memory>
+
+namespace ui {
+
+class Canvas;
+
 class View {
 public:
     enum class Backend { CPU, GPU_Texture, NativeLayer, External };
@@ -109,34 +350,44 @@ public:
     virtual int height() const = 0;
 
     virtual Canvas& canvas() = 0;
-    virtual void compositeTo(Canvas& target, int x, int y) = 0;
     virtual void clear(Color c = 0) = 0;
+    virtual void compositeTo(Canvas& target, int x, int y) = 0;
     virtual void release() = 0;
 };
+
+} // namespace ui
 ```
 
-**具体实现**：
+**实现**：
 
 | 实现 | 后端 | Canvas 类型 |
 |---|---|---|
 | `CpuBitmapView` | CPU | `CpuCanvas`（软光栅） |
-| `GpuTextureView` | GPU_Texture | `GpuCanvas`（命令记录） |
+| `GpuTextureView` | GPU_Texture | `GpuCanvas`（2D 批处理） |
 | `NativeLayerView` | NativeLayer | `NativeCanvas`（平台 API） |
 | `ExternalView` | External | 外部托管 |
 
 ---
 
-### ③ ViewFactory（新增）
+### ④ ViewFactory（新增）
 
 **文件**：`src/render/view_factory.hpp`
 
 ```cpp
+#pragma once
+#include "view.hpp"
+#include <memory>
+
+namespace ui {
+
 class ViewFactory {
 public:
     static bool isAvailable(View::Backend b);
     static View::Backend fallback(View::Backend b);
     static std::unique_ptr<View> create(View::Backend b, int w, int h);
 };
+
+} // namespace ui
 ```
 
 **降级链**：
@@ -150,7 +401,7 @@ CPU          →  CPU（保底）
 
 ---
 
-### ④ Canvas（改）
+### ⑤ Canvas（改）
 
 **文件**：`src/render/canvas.hpp`
 
@@ -158,136 +409,98 @@ CPU          →  CPU（保底）
 
 ```cpp
 virtual void drawView(View& v, int x, int y) = 0;
-// 默认实现：调 v.compositeTo(*this, x, y)，由 View 处理跨后端
+// 默认实现：调 v.compositeTo(*this, x, y)
 ```
 
 其余接口不动。
 
 ---
 
-### ⑤ Widget（替换 BaseController）
+### ⑥ RHI（新增）
 
-**文件**：`src/component/widget.hpp`
+**文件**：`src/rhi/*`
 
-**成员**：
-
-```cpp
-Handle handle_ = kInvalidHandle;
-HandlePool<Widget>* pool_ = nullptr;
-Rect geometry_;
-std::unique_ptr<View> view_;          // 可选
-std::vector<std::shared_ptr<Widget>> children_;
-Widget* parent_ = nullptr;
-std::function<void()> redrawCb_;
-```
-
-**接口**：
+**核心对象**：
 
 ```cpp
-// 生命周期
-void attach(Handle, HandlePool<Widget>*);
-Handle handle() const;
+namespace rhi {
 
-// 几何
-void setGeometry(const Rect&);
-Rect geometry() const;
+class Device;
+class Queue;
+class Texture;
+class Sampler;
+class Shader;
+class Pipeline;
+class Buffer;
+class CommandBuffer;
+class Swapchain;
 
-// View
-View* view() const;
-View* ensureView(int w, int h);       // 按 preferredBackend 创建
-void releaseView();
-
-// 子控件
-void addChild(std::shared_ptr<Widget>);
-const std::vector<std::shared_ptr<Widget>>& children() const;
-
-// 渲染
-virtual void render(Canvas& target, int x, int y);
-
-// 事件
-virtual bool dispatchEvent(const Event& e);
-bool hitTest(int x, int y) const;
-
-// 重绘
-void requestRedraw();
-void setRedrawCallback(std::function<void()>);
-```
-
-**虚钩子**：
-
-```cpp
-protected:
-    virtual void onRenderSelf(Canvas& cv) {}   // 统一入口（有无 View 都走这）
-    virtual void onEvent(const Event& e) {}    // 局部坐标
-    virtual View::Backend preferredBackend() const {
-        return View::Backend::CPU;
-    }
-```
-
-**render 逻辑**：
-
-```cpp
-void Widget::render(Canvas& target, int x, int y) {
-    if (view_) {
-        // 有 View：画进自己，再合成
-        Canvas& my = view_->canvas();
-        my.clear(0);
-        onRenderSelf(my);
-        for (auto& c : children_)
-            c->render(my, c->geometry_.x, c->geometry_.y);
-        target.drawView(*view_, x, y);
-    } else {
-        // 无 View：直接画
-        target.save();
-        target.translate(x, y);
-        onRenderSelf(target);
-        for (auto& c : children_)
-            c->render(target, x + c->geometry_.x, y + c->geometry_.y);
-        target.restore();
-    }
 }
 ```
 
-**dispatchEvent 逻辑**：
+**极简接口**：
 
 ```cpp
-bool Widget::dispatchEvent(const Event& e) {
-    // 逆序递归子控件
-    for (auto it = children_.rbegin(); it != children_.rend(); ++it)
-        if ((*it)->dispatchEvent(e)) return true;
+class Device {
+public:
+    static std::unique_ptr<Device> create(Backend b);
 
-    // 命中测试
-    if (!hitTest(e.x, e.y)) return false;
+    Texture*  createTexture(const TextureDesc&);
+    Sampler*  createSampler(const SamplerDesc&);
+    Shader*   createShader(const ShaderDesc&);
+    Pipeline* createPipeline(const PipelineDesc&);
+    Buffer*   createBuffer(const BufferDesc&);
 
-    // 转局部坐标
-    Event local = e;
-    local.x -= geometry_.x;
-    local.y -= geometry_.y;
-    onEvent(local);
-    return true;
-}
+    Swapchain*     createSwapchain(void* nativeWindow);
+    CommandBuffer* createCommandBuffer();
+    Queue& queue();
+
+    void waitIdle();
+};
+
+class CommandBuffer {
+public:
+    void beginRenderPass(Texture* rt, Color clear);
+    void setPipeline(Pipeline*);
+    void bindTexture(Texture*, Sampler*);
+    void setVertexBuffer(Buffer*);
+    void setIndexBuffer(Buffer*);
+    void draw(uint32_t vertexCount, uint32_t first);
+    void drawIndexed(uint32_t indexCount, uint32_t first);
+    void endRenderPass();
+    void commit();
+};
+
+class Queue {
+public:
+    void submit(CommandBuffer*);
+    void present(Swapchain*);
+};
 ```
 
-**坐标语义**：
+**统一顶点格式**：
 
-| 位置 | 坐标系 |
-|---|---|
-| `render(target, x, y)` | x/y 是**相对父的绝对坐标** |
-| 进入有 View 的 Widget | 坐标系切到**该 View 的局部** |
-| 无 View 的 Widget | 只 translate，坐标继续累加 |
-| `onEvent` | **局部坐标**（已减 geometry_） |
+```cpp
+struct UIVertex {
+    float x, y;         // 屏幕坐标
+    float u, v;         // 纹理坐标
+    uint32_t color;     // RGBA 顶点色
+};
+```
+
+**Shader 统一 IR**：一份源码，各后端转译
 
 ---
 
-### ⑥ Window（改）
+### ⑦ Window（改）
 
 **文件**：`src/window/window.hpp` / `.cpp`
 
 **新增成员**：
 
 ```cpp
-std::unique_ptr<View> mainView_;         // 主 View
-std::shared_ptr<Widget> root_;           // 根控件
+std::unique_ptr<View> mainView_;
+std::shared_ptr<Widget> root_;
 WidgetFactory widgetFactory_;
 ```
 
@@ -327,7 +540,7 @@ void Window::onPaint(Canvas& canvas, const Rect& dirty) {
 void Window::onEvent(const Event& event) {
     if (event.type == EventType::Resize && root_) {
         root_->setGeometry({0, 0, event.width, event.height});
-        if (mainView_) mainView_->release();   // 尺寸变化重建
+        if (mainView_) mainView_->release();
     }
     if (root_ && root_->dispatchEvent(event)) {
         if (eventHandler_) eventHandler_(event);
@@ -337,50 +550,56 @@ void Window::onEvent(const Event& event) {
 }
 ```
 
-**setSize()**：同步 root 几何 + 重建 mainView_
-
 ---
 
-### ⑦ Application（改）
+### ⑧ Application（改）
 
 **文件**：`src/core/application.hpp` / `.cpp`
 
-**新增成员**：
+**去掉 HandlePool，新增模板方法**：
 
 ```cpp
-HandlePool<Widget> widgets_;
-```
+class Application {
+public:
+    template <typename T, typename... Args>
+    std::shared_ptr<T> createWidget(Args&&... args) {
+        return std::make_shared<T>(std::forward<Args>(args)...);
+    }
 
-**新增接口**：
+    Window* createWindow(const std::string& title, int w, int h);
+    void    destroyWindow(Window* w);
 
-```cpp
-template <typename T, typename... Args>
-Handle createWidget(Args&&... args);
+    int  run();
+    void quit();
 
-std::shared_ptr<Widget> widget(Handle h) const;
-void destroyWidget(Handle h);
+private:
+    std::unique_ptr<EventLoop> loop_;
+    std::vector<std::unique_ptr<Window>> windows_;
+    std::vector<Window*> pendingDestroy_;
+    bool running_ = false;
+    bool shouldQuit_ = false;
+
+    // [延期] HandlePool<Widget> widgets_;
+};
 ```
 
 **createWindow()** 注入 WidgetFactory：
 
 ```cpp
-raw->setWidgetFactory([this]() {
-    auto root = std::make_shared<Widget>();
-    Handle h = widgets_.add(root);
-    root->attach(h, &widgets_);
-    return root;
+raw->setWidgetFactory([]() {
+    return std::make_shared<Widget>();
 });
 ```
 
 ---
 
-### ⑧ Button（改）
+### ⑨ Button（改）
 
 **文件**：`src/component/button.hpp`
 
 - 继承 `Widget`
-- **默认无 View**（`preferredBackend` 无关紧要，因为不建 View）
-- 实现 `onRenderSelf(Canvas& cv)`：
+- **默认无 View**（直接画）
+- 实现 `onRenderSelf(Canvas& cv)`
 
 ```cpp
 void Button::onRenderSelf(Canvas& cv) override {
@@ -398,24 +617,24 @@ void Button::onRenderSelf(Canvas& cv) override {
 }
 ```
 
-- 重写 `dispatchEvent` 处理 hover/pressed
+- 重写 `dispatchEvent` 处理 hover / pressed
 - 状态变化时 `requestRedraw()`
 
 ---
 
-### ⑨ Layout 基类（新增）
+### ⑩ Layout（新增）
 
 **文件**：`src/component/layout.hpp`
 
 - 继承 `Widget`
-- **有 View**（默认）
-- 可设背景色
+- **有 View**
 - `preferredBackend()` 返回 `GPU_Texture`
+- 可设背景色
 
 ```cpp
 class Layout : public Widget {
 public:
-    Layout() { ensureView(0, 0); }   // 先占位，render 时按 geometry 重建
+    Layout() { ensureView(0, 0); }
     void setBackground(Color c) { bgColor_ = c; }
 
 protected:
@@ -433,15 +652,15 @@ private:
 
 ---
 
-### ⑩ ScrollView / Modal（新增）
+### ⑪ ScrollView / Modal（新增）
 
 - 继承 Layout
-- ScrollView 加视口裁剪 + 内容平移
-- Modal 加独立图层 + 遮罩
+- ScrollView：视口裁剪 + 内容平移
+- Modal：独立图层 + 遮罩
 
 ---
 
-## 四、渲染流程
+## 五、渲染流程
 
 ```
 Window::onPaint(canvas)
@@ -454,18 +673,17 @@ Window::onPaint(canvas)
          └─ 有 View 的 Layout
              ├─ layoutCanvas = layout.view_->canvas()
              ├─ layoutCanvas.clear()
-             ├─ Layout::onRenderSelf(layoutCanvas)     // 背景
+             ├─ Layout::onRenderSelf(layoutCanvas)
              ├─ 子控件 render(layoutCanvas, ...)
              └─ mainCanvas.drawView(*layout.view_, x, y)
-                 └─ 内部：layout.view_->compositeTo(mainCanvas, x, y)
-                     └─ 跨后端时上传/读回/叠加
+                 └─ compositeTo → 跨后端时上传/读回/叠加
 
- └─ canvas.drawView(*mainView_, 0, 0)   // 贴到窗口
+ └─ canvas.drawView(*mainView_, 0, 0)
 ```
 
 ---
 
-## 五、事件流程
+## 六、事件流程
 
 ```
 Window::onEvent(e)
@@ -479,7 +697,7 @@ Window::onEvent(e)
 
 ---
 
-## 六、后端选择链
+## 七、后端选择链
 
 ```
 Widget::preferredBackend()     声明偏好
@@ -506,11 +724,11 @@ View::canvas()                 返回对应后端的 Canvas
 | 截图 / 导出 | `CPU` |
 | 单测 | `CPU` |
 
-**降级链**：GPU/NativeLayer/External → **CPU**（保底）
+**降级链**：GPU / NativeLayer / External → **CPU**
 
 ---
 
-## 七、跨后端合成规则
+## 八、跨后端合成规则
 
 | 父 \ 子 | CPU | GPU | NativeLayer |
 |---|---|---|---|
@@ -522,12 +740,30 @@ View::canvas()                 返回对应后端的 Canvas
 
 - 同一子树尽量同后端
 - NativeLayer 只做**顶层叠加**
-- 跨后端转换要**缓存**（上传一次多帧复用）
+- 跨后端转换要**缓存**
 - GPU → CPU 读回尽量避免
 
 ---
 
-## 八、刷新（脏矩形）
+## 九、RHI 后端实现顺序
+
+```
+1. Metal          ← Apple 唯一
+2. Vulkan         ← Win/Linux/Android 通用
+3. D3D11          ← Windows 保底，实现简单
+4. OpenGL / GLES  ← 老平台保底
+5. D3D12          ← 最后做（复杂，D3D11 已覆盖 Windows）
+```
+
+**Shader 策略**：
+
+- 一份源码（推荐 GLSL 或 HLSL）
+- 用 `glslang` / `spirv-cross` 转译到各后端
+- 不手写 N 份
+
+---
+
+## 十、刷新（脏矩形）
 
 ```
 简单控件状态变化 → requestRedraw()
@@ -541,28 +777,25 @@ View::canvas()                 返回对应后端的 Canvas
 
 ---
 
-## 九、用户侧用法
+## 十一、用户侧用法
 
 ```cpp
 Application app;
 Window* win = app.createWindow("Demo", 400, 300);
 
 // 简单控件（无 View）
-Handle h = app.createWidget<Button>("点击我");
-auto btn = std::static_pointer_cast<Button>(app.widget(h));
+auto btn = app.createWidget<Button>("点击我");
 btn->setGeometry({140, 130, 120, 40});
 btn->setOnClick([](){ /* ... */ });
 win->addChild(btn);
 
 // 需要裁剪的 Layout（有 View，GPU）
-Handle lh = app.createWidget<ScrollView>();
-auto sv = std::static_pointer_cast<ScrollView>(app.widget(lh));
+auto sv = app.createWidget<ScrollView>();
 sv->setGeometry({0, 0, 400, 200});
 win->addChild(sv);
 
 // 视频（NativeLayer，独立后端）
-Handle vh = app.createWidget<VideoWidget>();
-auto vw = std::static_pointer_cast<VideoWidget>(app.widget(vh));
+auto vw = app.createWidget<VideoWidget>();
 vw->setGeometry({20, 20, 320, 180});
 sv->addChild(vw);
 
@@ -572,44 +805,95 @@ return app.run();
 
 ---
 
-## 十、修改顺序
+## 十二、HandlePool 延期说明
+
+### 当前做法
+
+- **不建池**
+- Widget 用 `shared_ptr` 持有子，`parent_` 用裸指针反向引用
+- 每个 Widget 有自增 `id_`
+
+### 延期原因
+
+| 需求 | 当前是否需要 |
+|---|---|
+| 脚本系统（Lua/JS） | ❌ |
+| 序列化 / 存档 | ❌ |
+| 网络同步 / 跨进程 | ❌ |
+| 全局对象遍历 | ❌ |
+| 统一资源管理 | ❌ |
+
+### 触发条件（满足任一即引入）
+
+- 接入脚本系统
+- 需要序列化 / 存档
+- 需要网络同步 / 跨进程
+- 需要全局遍历对象
+- 需要弱引用 + 稳定 id 的组合
+
+### 升级路径（将来）
+
+```
+1. 新增 HandlePool<Widget>
+2. Application 持有池
+3. createWidget<T>() 内部：
+     make_shared → 池.add() → 返回 handle
+4. 加 widget(handle) 查表接口
+5. Widget::id_ 直接作为 handle（或映射）
+6. 上层代码几乎不动
+```
+
+**关键**：`Widget::id_` 已经预留，升级时不需要改 Widget 本身。
+
+---
+
+## 十三、修改顺序
 
 | 步骤 | 内容 | 验证 |
 |---|---|---|
-| 1 | `HandlePool` | 编译通过 |
+| 1 | `WidgetId` + `Widget` 骨架 | 编译通过 |
 | 2 | `View` 接口 + `CpuBitmapView` | 能画一块 |
 | 3 | `Canvas::drawView` | 能合成 |
-| 4 | `Widget` 骨架（View 可选） | 空窗口渲染 |
-| 5 | `Window` + `mainView_` + `root_` | 主 View 能贴 |
-| 6 | `Application` + `widgets_` + `createWidget` | 能建 Widget |
-| 7 | `Button` 继承 Widget（无 View） | 按钮显示/点击 |
-| 8 | `Layout` 基类（有 View） | 布局容器能裁剪 |
-| 9 | `ViewFactory` + `preferredBackend` | 后端可切换 |
-| 10 | `GpuTextureView` / `NativeLayerView` | 多后端可用 |
-| 11 | `ScrollView` / `Modal` | 滚动/弹层 |
-| 12 | 脏矩形 + `requestRedraw` 冒泡 | 局部刷新 |
-| 13 | 跨后端合成 + 缓存 | 混合后端跑通 |
-| 14 | 打磨（性能、MouseExit、焦点） | 体验完整 |
+| 4 | `Window` + `mainView_` + `root_` | 主 View 能贴 |
+| 5 | `Application` + `createWidget<T>()` | 能建 Widget |
+| 6 | `Button` 继承 Widget（无 View） | 按钮显示/点击 |
+| 7 | `Layout` 基类（有 View） | 布局容器能裁剪 |
+| 8 | `ViewFactory` + `preferredBackend` | 后端可切换 |
+| 9 | `RHI` 接口 + 单后端（Metal） | GPU 能跑 |
+| 10 | `GpuCanvas`（2D 批处理 + 图集） | 2D 命令走 GPU |
+| 11 | RHI 加 Vulkan / D3D11 | 跨平台 |
+| 12 | RHI 加 OpenGL / GLES / D3D12 | 全覆盖 |
+| 13 | `ScrollView` / `Modal` | 滚动/弹层 |
+| 14 | 脏矩形 + `requestRedraw` 冒泡 | 局部刷新 |
+| 15 | 跨后端合成 + 缓存 | 混合后端跑通 |
+| 16 | 打磨（性能、MouseExit、焦点） | 体验完整 |
 
 ---
 
-## 十一、核心结论
+## 十四、核心结论
 
 > **1. View 是通用绘制容器，任何 Widget 可选持有。**
 > **2. View 可选、按需创建；简单控件直接画到最近的 View。**
-> **3. 后端是 View 的类型属性，Widget 声明偏好，工厂负责创建和降级。**
-> **4. 按 View 选后端不是额外机制，而是 View 与生俱来的能力。**
-> **5. 先做 CPU，接口留好，需要时再加 GPU / NativeLayer。**
-> **6. 跨后端合成走 `compositeTo`，NativeLayer 只能顶层叠加。**
+> **3. 后端是 View 的类型属性；Widget 声明偏好，工厂负责创建和降级。**
+> **4. 6 个图形 API → 必须上 RHI；RHI 是核心基础设施。**
+> **5. RHI 是 2D 薄抽象；统一顶点格式 + 一份 Shader IR。**
+> **6. 生命周期用 shared_ptr + 裸指针；HandlePool 向后排，Widget 保留 id_ 伏笔。**
+> **7. 跨后端合成走 `compositeTo`；NativeLayer 只能顶层叠加。**
+> **8. 实现顺序：CPU → Metal → Vulkan → D3D11 → GL/GLES → D3D12。**
 
 ---
 
-## 十二、三条不变式（自检用）
+## 十五、四条不变式（自检用）
 
 1. **坐标不变式**：`render` 传绝对/累加坐标，`onEvent` 传局部坐标
 2. **View 不变式**：有 View 就画进 View 再合成；无 View 就直接画
 3. **后端不变式**：View 创建时确定后端，运行时不变；跨后端走 `compositeTo`
+4. **所有权不变式**：父持子用 `shared_ptr`，子引父用裸指针；无循环引用
 
 ---
 
-按这个方案逐步替换，每步都能编译验证。先跑通 CPU 单后端，再引入多后端，风险最低。需要细化某一层（如 `CpuCanvas` 实现、跨后端合成细节、ScrollView 裁剪逻辑）时告诉我。
+## 十六、一句话总结
+
+> **用 `shared_ptr` 管生命周期，用 `id_` 埋 HandlePool 伏笔；View 通用可选，后端随 View；6 个 API 走薄 2D RHI；先 CPU，再 Metal → Vulkan → D3D11 → GL/GLES → D3D12。**
+
+按此设计，从 `WidgetId` + `Widget` 骨架开始逐步落地，每步可编译验证。HandlePool 作为延期项，`id_` 已备好，将来引入时改动可控。
