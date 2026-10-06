@@ -1,9 +1,56 @@
 # ============================================================
 #  MaterialUI 静态库
 # ============================================================
-set(SKIA_ROOT "$ENV{HOME}/skia")
-
 find_package(PkgConfig REQUIRED)
+
+# ---------- 查找 Skia（可选）----------
+set(MATERIALUI_HAS_SKIA FALSE)
+
+if(MATERIALUI_USE_SKIA)
+    set(_skia_hints "")
+    if(MATERIALUI_SKIA_ROOT)
+        list(APPEND _skia_hints "${MATERIALUI_SKIA_ROOT}")
+    endif()
+    if(DEFINED ENV{SKIA_ROOT})
+        list(APPEND _skia_hints "$ENV{SKIA_ROOT}")
+    endif()
+    list(APPEND _skia_hints "$ENV{HOME}/skia")
+
+    find_path(SKIA_INCLUDE_DIR
+        NAMES include/core/SkCanvas.h
+        HINTS ${_skia_hints}
+        PATH_SUFFIXES "" include
+    )
+
+    if(APPLE OR UNIX)
+        find_library(SKIA_LIBRARY
+            NAMES skia libskia.a
+            HINTS ${_skia_hints}
+            PATH_SUFFIXES lib lib64
+        )
+    elseif(WIN32)
+        find_library(SKIA_LIBRARY
+            NAMES skia skia.lib
+            HINTS ${_skia_hints}
+            PATH_SUFFIXES lib lib64 out/Release
+        )
+    endif()
+
+    if(SKIA_INCLUDE_DIR AND SKIA_LIBRARY)
+        set(MATERIALUI_HAS_SKIA TRUE)
+        message(STATUS "MaterialUI: Skia found at ${SKIA_INCLUDE_DIR} / ${SKIA_LIBRARY}")
+    else()
+        message(STATUS "MaterialUI: Skia NOT found, building without Skia backend")
+    endif()
+endif()
+
+# ---------- Skia 相关源文件（可选）----------
+set(MATERIALUI_SKIA_SOURCES "")
+if(MATERIALUI_HAS_SKIA)
+    set(MATERIALUI_SKIA_SOURCES
+        src/canvas/skiaCanvas.cpp
+    )
+endif()
 
 # ---------- 平台源文件 & 平台链接库 ----------
 if(APPLE)
@@ -18,7 +65,6 @@ if(APPLE)
     )
 
     set(platform_link_libs
-        "${SKIA_ROOT}/lib/libskia.a"
         "-framework Cocoa"
         "-framework CoreFoundation"
         "-framework CoreGraphics"
@@ -46,7 +92,6 @@ elseif(WIN32)
     )
 
     set(platform_link_libs
-        "${SKIA_ROOT}/lib/skia.lib"
         user32
         gdi32
         msimg32
@@ -88,7 +133,6 @@ elseif(UNIX AND NOT APPLE)
     )
 
     set(platform_link_libs
-        "${SKIA_ROOT}/lib/libskia.a"
         pthread
         dl
         ${X11_LIBRARIES}
@@ -103,14 +147,22 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
-# ---------- 库目标（原来是 add_executable）----------
+# ---------- 如果启用了 Skia，把库追加到平台链接库 ----------
+if(MATERIALUI_HAS_SKIA)
+    list(APPEND platform_link_libs "${SKIA_LIBRARY}")
+endif()
+
+# ---------- 库目标 ----------
 add_library(MaterialUI STATIC
     src/native/NativeWidget/NativeWidget.cpp
     ${platform_specific_sources}
+
+    # ---- Skia 相关源文件（可选）----
+    ${MATERIALUI_SKIA_SOURCES}
+
     src/core/types.h
     src/canvas/canvas.hpp
     src/canvas/skiaCanvas.hpp
-    src/canvas/skiaCanvas.cpp
     src/component/input/Button.hpp
     src/app/application.hpp
     src/window/window.hpp
@@ -123,13 +175,19 @@ add_library(MaterialUI STATIC
     src/core/handlePool.hpp
     src/core/widgetId.hpp
     src/component/widget.hpp
+    src/view/view.hpp
+    src/view/cpuView.cpp
 )
 
-# ---------- 头文件 & 包含目录（给库自己也给 demo 用 → PUBLIC）----------
+# ---------- 头文件 & 包含目录 ----------
 target_include_directories(MaterialUI PUBLIC
-    "${SKIA_ROOT}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
+
+if(MATERIALUI_HAS_SKIA)
+    target_include_directories(MaterialUI PUBLIC "${SKIA_INCLUDE_DIR}")
+    target_compile_definitions(MaterialUI PUBLIC MATERIALUI_HAS_SKIA=1)
+endif()
 
 # ---------- 平台专有 include / 依赖 ----------
 if(APPLE)
@@ -147,10 +205,9 @@ elseif(UNIX AND NOT APPLE)
         ${CAIRO_INCLUDE_DIRS}
         ${WAYLAND_INCLUDE_DIRS}
         ${XKB_INCLUDE_DIRS}
-        "${CMAKE_CURRENT_BINARY_DIR}"      # 找到生成的 xdg-shell-client-protocol.h
+        "${CMAKE_CURRENT_BINARY_DIR}"
     )
 
-    # 把生成的协议源加进库
     target_sources(MaterialUI PRIVATE ${XDG_PROTO_C})
     set_source_files_properties(${XDG_PROTO_C} PROPERTIES
         GENERATED TRUE
@@ -158,12 +215,11 @@ elseif(UNIX AND NOT APPLE)
     )
     set_source_files_properties(${XDG_PROTO_H} PROPERTIES GENERATED TRUE)
 
-    # 自定义命令的输出文件必须由某个 target 使用才会被触发编译
     add_custom_target(xdg_shell_gen DEPENDS ${XDG_PROTO_H} ${XDG_PROTO_C})
     add_dependencies(MaterialUI xdg_shell_gen)
 endif()
 
-# ---------- 链接平台库（PUBLIC，因为 demo 也要链接系统框架）----------
+# ---------- 链接平台库 ----------
 target_link_libraries(MaterialUI PUBLIC
     ${platform_link_libs}
 )

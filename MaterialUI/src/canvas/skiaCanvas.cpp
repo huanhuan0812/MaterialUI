@@ -135,8 +135,8 @@ void SkiaCanvas::commit(void* target) {
                                      rowBytes * info.height(), nullptr);
     CGImageRef cg = CGImageCreate(info.width(), info.height(),
                                   8, 32, rowBytes, cs,
-                                  kCGImageAlphaPremultipliedFirst |
-                                  kCGBitmapByteOrder32Little,
+                                  (CGBitmapInfo)kCGImageAlphaPremultipliedFirst |
+                                  (CGBitmapInfo)kCGBitmapByteOrder32Little,
                                   provider, nullptr, false,
                                   kCGRenderingIntentDefault);
     CGDataProviderRelease(provider);
