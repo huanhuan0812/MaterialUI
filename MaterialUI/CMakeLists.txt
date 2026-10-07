@@ -177,6 +177,8 @@ add_library(MaterialUI STATIC
     src/component/widget.hpp
     src/view/view.hpp
     src/view/cpuView.cpp
+    src/view/backend.hpp
+    src/view/viewFactory.hpp
 )
 
 # ---------- 头文件 & 包含目录 ----------
